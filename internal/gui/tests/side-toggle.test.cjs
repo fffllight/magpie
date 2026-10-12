@@ -145,6 +145,8 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
 
     await t.test("the two trade places as one motion", async () => {
       const context = await browser.newContext({ viewport: { width: 1280, height: 760 } });
+      // a Mac's window: Linux's has no view transition (below), whatever the host
+      await context.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "MacIntel" }));
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (e) => errors.push(e.message));
@@ -190,6 +192,37 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
       await page.locator("#sideToggle").click();
       assert.equal(await side(page), false, "the header at once");
       assert.equal(await page.evaluate(() => window.morphed), false);
+      await context.close();
+    });
+
+    // Linux's window has the view transition's API, but on NVIDIA's EGL
+    // WebKitGTK segfaults taking its snapshot, and the window with it; so
+    // the change is at once there, as under less motion. magpie web in a
+    // browser on Linux still trades places (brand.test.cjs has web: true).
+    await t.test("Linux's window: at once", async () => {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 760 } });
+      await context.addInitScript(() => Object.defineProperty(Navigator.prototype, "platform", { get: () => "Linux x86_64" }));
+      const page = await context.newPage();
+      const errors = [];
+      page.on("pageerror", (e) => errors.push(e.message));
+      await page.route("**/*", serve("en"));
+      await page.goto("http://magpie.test/");
+      await page.waitForSelector("#nav button.on");
+      assert.ok(await page.evaluate(() => document.body.classList.contains("linux") && !!document.startViewTransition), "Linux's window, with view transitions");
+      await page.evaluate(() => {
+        window.morphed = false;
+        new MutationObserver(() => { if (document.documentElement.classList.contains("nav-morph")) window.morphed = true; }).observe(document.documentElement, { attributes: true });
+        const vt = document.startViewTransition;
+        document.startViewTransition = (...a) => { window.morphed = true; return vt.apply(document, a); };
+      });
+      await page.locator("#sideToggle").click();
+      assert.equal(await side(page), false, "the header at once");
+      assert.equal(await page.evaluate(() => window.morphed), false, "no view transition on Linux");
+      await headerFits(page);
+      await page.locator("#sideToggle").click();
+      assert.ok(await side(page), "the sidebar back at once");
+      assert.equal(await page.evaluate(() => window.morphed), false);
+      assert.deepEqual(errors, []);
       await context.close();
     });
   });

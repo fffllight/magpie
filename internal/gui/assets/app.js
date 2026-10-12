@@ -23016,9 +23016,13 @@ function toggleSideNav() {
 // the two layouts trade places as one motion (app.css .nav-morph): the old
 // drawn and the new laid out, the sidebar sliding and each tab flying to
 // its place in the other; a webview without view transitions, or a reader
-// who asked for less motion, has the new at once
+// who asked for less motion, has the new at once. So has WebKitGTK: on
+// NVIDIA's EGL (595.84, WebKitGTK 2.52.6, X11) a view transition's snapshot
+// segfaults the web process in libnvidia-eglcore, and the window with it,
+// whatever WEBKIT_DISABLE_COMPOSITING_MODE or _DMABUF_RENDERER say
+const navMorphs = () => !(document.body.classList.contains("linux") && !web);
 function navMorph(change) {
-  if (navCalm() || !document.startViewTransition) { change(); return; }
+  if (navCalm() || !navMorphs() || !document.startViewTransition) { change(); return; }
   const root = document.documentElement;
   root.classList.add("nav-morph");
   const vt = document.startViewTransition(change);
